@@ -14,6 +14,7 @@ type Config struct {
 	ServerEnv  string
 
 	DBDriver          string
+	DatabaseURL       string
 	DBHost            string
 	DBPort            string
 	DBUser            string
@@ -61,6 +62,7 @@ func LoadConfig() *Config {
 		ServerPort:            getEnv("SERVER_PORT", "8080"),
 		ServerEnv:             getEnv("SERVER_ENV", "development"),
 		DBDriver:              getEnv("DB_DRIVER", "postgres"),
+		DatabaseURL:           getEnv("DATABASE_URL", ""),
 		DBHost:                getEnv("DB_HOST", "localhost"),
 		DBPort:                getEnv("DB_PORT", "5432"),
 		DBUser:                getEnv("DB_USER", "postgres"),

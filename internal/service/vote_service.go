@@ -79,11 +79,13 @@ func (s *voteService) SubmitVote(ctx context.Context, voterID string, req domain
 
 	// 3. LAYER 1: Redis Distributed Lock (SETNX) untuk memotong Race Condition serentak
 	lockKey := fmt.Sprintf("lock:vote:%s", voterID)
-	acquired, err := s.redisService.AcquireLock(ctx, lockKey, 15*time.Second)
-	if err != nil || !acquired {
-		return nil, ErrConcurrentConflict
+	if s.redisService != nil {
+		acquired, err := s.redisService.AcquireLock(ctx, lockKey, 15*time.Second)
+		if err == nil && !acquired {
+			return nil, ErrConcurrentConflict
+		}
+		defer s.redisService.ReleaseLock(ctx, lockKey)
 	}
-	defer s.redisService.ReleaseLock(ctx, lockKey)
 
 	// 4. Validasi Kursi & Kandidat yang Dipilih
 	eligibleChairs, err := s.chairRepo.FindEligibleForMajor(voter.Major)

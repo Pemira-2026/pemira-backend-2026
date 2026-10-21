@@ -25,8 +25,8 @@ func NewRedisService(host, port, password string, db int) (*RedisService, error)
 	defer cancel()
 
 	if err := client.Ping(ctx).Err(); err != nil {
-		// Log warning jika redis tidak aktif saat testing lokal, tapi tetap return struct
-		return &RedisService{Client: client}, err
+		// Log warning jika redis tidak aktif saat testing lokal, set client = nil agar fallback otomatis jalan
+		return &RedisService{Client: nil}, err
 	}
 
 	return &RedisService{Client: client}, nil
@@ -34,12 +34,13 @@ func NewRedisService(host, port, password string, db int) (*RedisService, error)
 
 // AcquireLock menggunakan SETNX untuk mencegah race condition double-voting
 func (r *RedisService) AcquireLock(ctx context.Context, key string, ttl time.Duration) (bool, error) {
-	if r.Client == nil {
-		return true, nil // Fallback jika redis belum di-setup
+	if r == nil || r.Client == nil {
+		return true, nil // Fallback jika redis belum di-setup / offline
 	}
 	success, err := r.Client.SetNX(ctx, key, "locked", ttl).Result()
 	if err != nil {
-		return false, err
+		// Jika redis error koneksi di tengah jalan, fallback ke DB-level lock
+		return true, nil
 	}
 	return success, nil
 }

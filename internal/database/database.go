@@ -7,6 +7,7 @@ import (
 	"pemira-backend/internal/domain"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -16,7 +17,9 @@ import (
 func Connect(cfg *config.Config) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 
-	if cfg.DBDriver == "mysql" {
+	if cfg.DatabaseURL != "" {
+		dialector = postgres.Open(cfg.DatabaseURL)
+	} else if cfg.DBDriver == "mysql" {
 		dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 			cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName,
 		)
@@ -102,5 +105,106 @@ func SeedInitialData(db *gorm.DB) {
 			IsEmergencyPaused: false,
 		}
 		db.Create(&config)
+	}
+
+	// 3. Seed Candidates jika belum ada
+	var candCount int64
+	db.Model(&domain.CandidateGroup{}).Count(&candCount)
+	if candCount == 0 {
+		log.Println("Seeding default election candidates...")
+		var allChairs []domain.Chair
+		db.Find(&allChairs)
+		chairMap := make(map[string]uint)
+		for _, c := range allChairs {
+			chairMap[c.Name] = c.ID
+		}
+
+		candidates := []domain.CandidateGroup{
+			// BEM Paslon 1
+			{
+				ID:           uuid.New().String(),
+				ChairID:      chairMap["Presiden & Wakil Presiden Mahasiswa (BEM)"],
+				BallotNumber: 1,
+				LeaderName:   "Arya Wijaya",
+				ViceName:     "Nadia Rahmawati",
+				Vision:       "Mewujudkan KM yang berdaya, kritis, dan berorientasi pada kebermanfaatan nyata bagi seluruh mahasiswa.",
+				Mission:      "1. Transformasi digital advokasi kampus.\n2. Wadah kolaborasi riset & karya lintas jurusan.\n3. Pendampingan karir dan beasiswa terpadu.",
+				WorkPrograms: "PEMIRA Hub, Portal Beasiswa Kampus, Pekan Karya Inovasi Mahasiswa",
+				ImageURL:     "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=500&auto=format&fit=crop&q=80",
+			},
+			// BEM Paslon 2
+			{
+				ID:           uuid.New().String(),
+				ChairID:      chairMap["Presiden & Wakil Presiden Mahasiswa (BEM)"],
+				BallotNumber: 2,
+				LeaderName:   "Fikri Maulana",
+				ViceName:     "Dinda Permata",
+				Vision:       "Sinergi KM Berintegritas, Inklusif, dan Berprestasi di Kancah Nasional & Internasional.",
+				Mission:      "1. Penguatan fungsi pengawasan dan tata kelola organisasi.\n2. Optimalisasi fasilitas dan ruang kreatif mahasiswa.\n3. Kampus hijau dan berkelanjutan.",
+				WorkPrograms: "Kampus Hijau 2026, Crisis Center Mahasiswa, Sinergi Ormawa Fest",
+				ImageURL:     "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=80",
+			},
+			// MPM Calon 1
+			{
+				ID:           uuid.New().String(),
+				ChairID:      chairMap["Dewan Perwakilan Mahasiswa (MPM)"],
+				BallotNumber: 1,
+				LeaderName:   "Rizky Ramadhan",
+				Vision:       "Legislatif mahasiswa yang transparan, aspiratif, dan berkeadilan.",
+				Mission:      "1. Keterbukaan risalah sidang dan regulasi kampus.\n2. Kanal aspirasi mahasiswa 24/7.",
+				WorkPrograms: "Ruang Dengar Terbuka, Audit Terbuka UKM, LegislaZone",
+				ImageURL:     "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=500&auto=format&fit=crop&q=80",
+			},
+			// MPM Calon 2
+			{
+				ID:           uuid.New().String(),
+				ChairID:      chairMap["Dewan Perwakilan Mahasiswa (MPM)"],
+				BallotNumber: 2,
+				LeaderName:   "Siti Rahma",
+				Vision:       "Optimalisasi fungsi legislasi dan anggaran yang akuntabel untuk kesejahteraan mahasiswa.",
+				Mission:      "1. Uji publik rancangan undang-undang mahasiswa.\n2. Pengawasan keuangan organisasi berbasis data.",
+				WorkPrograms: "Parlemen Mengabdi, Open Financial Audit, Public Hearing Rutin",
+				ImageURL:     "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500&auto=format&fit=crop&q=80",
+			},
+			// HMJ Elektro Calon 1
+			{
+				ID:           uuid.New().String(),
+				ChairID:      chairMap["Ketua Himpunan Mahasiswa Jurusan Elektro"],
+				BallotNumber: 1,
+				LeaderName:   "Bagas Pratama",
+				Vision:       "Himpunan Mahasiswa Elektro yang adaptif, inovatif, dan berdaya saing di era industri 4.0.",
+				Mission:      "1. Peningkatan kompetensi IoT dan energi terbarukan.\n2. Kolaborasi riset bersama industri.",
+				WorkPrograms: "Electro Hackathon 2026, IoT Boot Camp, HME Care",
+				ImageURL:     "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=500&auto=format&fit=crop&q=80",
+			},
+			// HMJ Elektro Calon 2
+			{
+				ID:           uuid.New().String(),
+				ChairID:      chairMap["Ketua Himpunan Mahasiswa Jurusan Elektro"],
+				BallotNumber: 2,
+				LeaderName:   "Anisa Putri",
+				Vision:       "Mewujudkan keluarga besar Teknik Elektro yang solid, berprestasi, dan humanis.",
+				Mission:      "1. Penguatan kebersamaan antar angkatan.\n2. Pelatihan sertifikasi kelistrikan dan instrumentasi.",
+				WorkPrograms: "Electro Mentorship, Sertifikasi K3 Listrik, Expo Inovasi Elektro",
+				ImageURL:     "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=500&auto=format&fit=crop&q=80",
+			},
+			// HMJ TIK Calon 1
+			{
+				ID:           uuid.New().String(),
+				ChairID:      chairMap["Ketua Himpunan Mahasiswa Jurusan TIK"],
+				BallotNumber: 1,
+				LeaderName:   "Alifian Firdaus",
+				Vision:       "Himpunan TIK sebagai episentrum teknologi, riset open-source, dan inovasi kecerdasan buatan.",
+				Mission:      "1. Inkubasi startup mahasiswa.\n2. Tech competition mentorship.",
+				WorkPrograms: "CodeFest 2026, AI Study Club, Open Source Weekend",
+				ImageURL:     "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=500&auto=format&fit=crop&q=80",
+			},
+		}
+
+		for _, cand := range candidates {
+			if cand.ChairID != 0 {
+				db.Create(&cand)
+			}
+		}
 	}
 }
