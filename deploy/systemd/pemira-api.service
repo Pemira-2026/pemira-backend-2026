@@ -1,0 +1,43 @@
+[Unit]
+Description=PEMIRA 2026 Core API
+Documentation=file:///opt/pemira/deploy/DEPLOYMENT_RUNBOOK.md
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pemira
+Group=pemira
+WorkingDirectory=/opt/pemira
+EnvironmentFile=/etc/pemira/backend.env
+ExecStart=/opt/pemira/pemira-api
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/pemira
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Resource limits (tune for host size; 3k-5k concurrent voters)
+LimitNOFILE=65535
+TasksMax=4096
+
+StandardOutput=append:/var/log/pemira/api.log
+StandardError=append:/var/log/pemira/api.err.log
+
+[Install]
+WantedBy=multi-user.target

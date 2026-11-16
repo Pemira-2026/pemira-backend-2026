@@ -13,6 +13,7 @@ type VoterRepository interface {
 	Create(voter *domain.Voter) error
 	BatchCreate(voters []domain.Voter) error
 	AtomicMarkVoted(tx *gorm.DB, voterID string, receiptHash string) (bool, error)
+	ReceiptHashExists(receiptHash string) (bool, error)
 	GetTurnoutStats() (total int64, voted int64, err error)
 }
 
@@ -55,11 +56,12 @@ func (r *voterRepository) BatchCreate(voters []domain.Voter) error {
 // Mengembalikan true jika baris terupdate (1), false jika sudah pernah memilih (0).
 func (r *voterRepository) AtomicMarkVoted(tx *gorm.DB, voterID string, receiptHash string) (bool, error) {
 	now := time.Now()
+	votedAt := now.Truncate(time.Minute)
 	res := tx.Model(&domain.Voter{}).
 		Where("id = ? AND has_voted = ?", voterID, false).
 		Updates(map[string]interface{}{
 			"has_voted":    true,
-			"voted_at":     now,
+			"voted_at":     votedAt,
 			"receipt_hash": receiptHash,
 			"updated_at":   now,
 		})
@@ -69,6 +71,16 @@ func (r *voterRepository) AtomicMarkVoted(tx *gorm.DB, voterID string, receiptHa
 	}
 
 	return res.RowsAffected > 0, nil
+}
+
+func (r *voterRepository) ReceiptHashExists(receiptHash string) (bool, error) {
+	var count int64
+	if err := r.db.Model(&domain.Voter{}).
+		Where("receipt_hash = ?", receiptHash).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count == 1, nil
 }
 
 func (r *voterRepository) GetTurnoutStats() (total int64, voted int64, err error) {

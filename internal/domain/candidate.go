@@ -7,8 +7,8 @@ import (
 // CandidateGroup merepresentasikan pasangan calon (Ketua & Wakil)
 type CandidateGroup struct {
 	ID           string    `gorm:"type:varchar(36);primaryKey" json:"id"` // UUID
-	ChairID      uint      `gorm:"not null;index" json:"chairId"`
-	BallotNumber int       `gorm:"not null" json:"ballotNumber"` // Nomor urut paslon (1, 2, 3...)
+	ChairID      uint      `gorm:"uniqueIndex:uq_chair_ballot_number;not null;index" json:"chairId"`
+	BallotNumber int       `gorm:"uniqueIndex:uq_chair_ballot_number;not null" json:"ballotNumber"` // Nomor urut paslon (1, 2, 3...)
 	LeaderName   string    `gorm:"type:varchar(150);not null" json:"leaderName"`
 	ViceName     string    `gorm:"type:varchar(150)" json:"viceName,omitempty"`
 	Vision       string    `gorm:"type:text" json:"vision,omitempty"`

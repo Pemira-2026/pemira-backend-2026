@@ -22,12 +22,12 @@ func (AuditLog) TableName() string {
 
 // ElectionConfig konfigurasi window pemilihan (jam mulai dan jam selesai)
 type ElectionConfig struct {
-	ID                 uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Title              string    `gorm:"type:varchar(150);not null" json:"title"`
-	StartTime          time.Time `gorm:"not null" json:"startTime"`
-	EndTime            time.Time `gorm:"not null" json:"endTime"`
-	IsEmergencyPaused  bool      `gorm:"not null;default:false" json:"isEmergencyPaused"`
-	UpdatedAt          time.Time `json:"updatedAt"`
+	ID                uint      `gorm:"primaryKey;autoIncrement" json:"id"`
+	Title             string    `gorm:"type:varchar(150);not null" json:"title"`
+	StartTime         time.Time `gorm:"not null" json:"startTime"`
+	EndTime           time.Time `gorm:"not null" json:"endTime"`
+	IsEmergencyPaused bool      `gorm:"not null;default:false" json:"isEmergencyPaused"`
+	UpdatedAt         time.Time `json:"updatedAt"`
 }
 
 func (ElectionConfig) TableName() string {

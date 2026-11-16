@@ -27,15 +27,15 @@ func (Voter) TableName() string {
 
 // DTO untuk profile pemilih yang sedang login
 type VoterProfileResponse struct {
-	ID         string   `json:"id"`
-	NIM        string   `json:"nim"`
-	FullName   string   `json:"fullName"`
-	Email      string   `json:"email"`
-	Faculty    string   `json:"faculty"`
-	Major      string   `json:"major"`
-	Generation int      `json:"generation"`
-	Role       string   `json:"role"`
-	HasVoted   bool     `json:"hasVoted"`
+	ID             string         `json:"id"`
+	NIM            string         `json:"nim"`
+	FullName       string         `json:"fullName"`
+	Email          string         `json:"email"`
+	Faculty        string         `json:"faculty"`
+	Major          string         `json:"major"`
+	Generation     int            `json:"generation"`
+	Role           string         `json:"role"`
+	HasVoted       bool           `json:"hasVoted"`
 	EligibleChairs []ChairSummary `json:"eligibleChairs"`
 }
 

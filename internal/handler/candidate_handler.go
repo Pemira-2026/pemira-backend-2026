@@ -1,21 +1,28 @@
 package handler
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"pemira-backend/internal/domain"
 	"pemira-backend/internal/repository"
+	"pemira-backend/pkg/redis"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
 
 type CandidateHandler struct {
-	chairRepo repository.ChairRepository
-	voterRepo repository.VoterRepository
+	chairRepo    repository.ChairRepository
+	voterRepo    repository.VoterRepository
+	redisService *redis.RedisService
 }
 
-func NewCandidateHandler(chairRepo repository.ChairRepository, voterRepo repository.VoterRepository) *CandidateHandler {
+func NewCandidateHandler(chairRepo repository.ChairRepository, voterRepo repository.VoterRepository, redisService *redis.RedisService) *CandidateHandler {
 	return &CandidateHandler{
-		chairRepo: chairRepo,
-		voterRepo: voterRepo,
+		chairRepo:    chairRepo,
+		voterRepo:    voterRepo,
+		redisService: redisService,
 	}
 }
 
@@ -33,10 +40,28 @@ func (h *CandidateHandler) GetBoothCandidates(c *gin.Context) {
 		return
 	}
 
+	cacheKey := fmt.Sprintf("cache:booth:chairs:%s", voter.Major)
+	if h.redisService != nil && h.redisService.IsAvailable() {
+		val, err := h.redisService.Get(c.Request.Context(), cacheKey)
+		if err == nil && val != "" {
+			var cachedChairs []domain.Chair
+			if err := json.Unmarshal([]byte(val), &cachedChairs); err == nil {
+				c.JSON(http.StatusOK, cachedChairs)
+				return
+			}
+		}
+	}
+
 	chairs, err := h.chairRepo.FindEligibleForMajor(voter.Major)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data kandidat: " + err.Error()})
 		return
+	}
+
+	if h.redisService != nil && h.redisService.IsAvailable() {
+		if bytes, err := json.Marshal(chairs); err == nil {
+			_ = h.redisService.SetWithTTL(c.Request.Context(), cacheKey, string(bytes), 30*time.Second)
+		}
 	}
 
 	c.JSON(http.StatusOK, chairs)
@@ -44,10 +69,29 @@ func (h *CandidateHandler) GetBoothCandidates(c *gin.Context) {
 
 // GetAllChairs mengembalikan seluruh kursi dan paslon untuk keperluan informasi publik
 func (h *CandidateHandler) GetAllChairs(c *gin.Context) {
+	cacheKey := "cache:all_chairs"
+	if h.redisService != nil && h.redisService.IsAvailable() {
+		val, err := h.redisService.Get(c.Request.Context(), cacheKey)
+		if err == nil && val != "" {
+			var cachedChairs []domain.Chair
+			if err := json.Unmarshal([]byte(val), &cachedChairs); err == nil {
+				c.JSON(http.StatusOK, cachedChairs)
+				return
+			}
+		}
+	}
+
 	chairs, err := h.chairRepo.FindAllActive()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data kursi: " + err.Error()})
 		return
 	}
+
+	if h.redisService != nil && h.redisService.IsAvailable() {
+		if bytes, err := json.Marshal(chairs); err == nil {
+			_ = h.redisService.SetWithTTL(c.Request.Context(), cacheKey, string(bytes), 30*time.Second)
+		}
+	}
+
 	c.JSON(http.StatusOK, chairs)
 }

@@ -1,0 +1,18 @@
+[Unit]
+Description=PEMIRA 2026 PostgreSQL encrypted backup
+Documentation=file:///opt/pemira/deploy/BACKUP_RESTORE.md
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=pemira
+Group=pemira
+EnvironmentFile=/etc/pemira/backup.env
+ExecStart=/opt/pemira/deploy/scripts/backup-postgres.sh
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+PrivateTmp=true
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/backups/pemira /var/log/pemira

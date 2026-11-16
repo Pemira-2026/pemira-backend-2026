@@ -1,0 +1,64 @@
+groups:
+  - name: pemira-api
+    rules:
+      - alert: PemiraApiDown
+        expr: up{job="pemira-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PEMIRA API is down"
+          description: "Prometheus cannot scrape the PEMIRA API for more than 1 minute."
+
+      - alert: PemiraHigh5xxRate
+        expr: |
+          sum(rate(pemira_http_errors_total[5m]))
+            /
+          clamp_min(sum(rate(pemira_http_requests_total[5m])), 0.001)
+            > 0.02
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PEMIRA 5xx error rate above 2%"
+          description: "5xx ratio is {{ $value | humanizePercentage }} over 5 minutes."
+
+      - alert: PemiraHighMeanLatency
+        # The API exposes a summary, not a histogram, so alert on mean latency.
+        expr: |
+          sum(rate(pemira_http_request_duration_seconds_sum[5m]))
+            /
+          clamp_min(sum(rate(pemira_http_request_duration_seconds_count[5m])), 0.001)
+            > 1.0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PEMIRA mean latency above 1s"
+          description: "Mean latency is {{ $value }}s. Check database/Redis saturation."
+
+      - alert: PemiraInflightSaturation
+        expr: pemira_http_inflight_requests > 500
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PEMIRA in-flight requests very high"
+          description: "{{ $value }} requests currently in flight; possible worker starvation."
+
+      - alert: PemiraProcessRestarted
+        expr: resets(pemira_process_uptime_seconds[15m]) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "PEMIRA API restarted"
+          description: "Process uptime reset detected. Check crash logs immediately during election hours."
+
+      - alert: PemiraNoTrafficDuringElection
+        expr: sum(rate(pemira_http_requests_total{path="/api/v1/vote/submit"}[10m])) == 0
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "No vote submissions for 20 minutes"
+          description: "Verify the election window and network path; silence outside election hours."

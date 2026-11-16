@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -10,6 +12,9 @@ import (
 	"pemira-backend/internal/domain"
 	"pemira-backend/internal/repository"
 	"pemira-backend/pkg/redis"
+	"strconv"
+	"strings"
+	"sync"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -37,6 +42,11 @@ type authService struct {
 	voterRepo    repository.VoterRepository
 	redisService *redis.RedisService
 	cfg          *config.Config
+
+	// usedStates provides single-use protection for the stateless HMAC OAuth
+	// state fallback when Redis is unavailable. Redis-backed states are deleted
+	// atomically after validation.
+	usedStates sync.Map // state string -> expiry unix (int64)
 }
 
 func NewAuthService(
@@ -52,23 +62,80 @@ func NewAuthService(
 }
 
 // GenerateOAuthState membuat token state acak berumur 5 menit di Redis untuk mencegah OAuth Login CSRF
+// Jika Redis tidak tersedia, menggunakan fallback stateless HMAC-signed state
 func (s *authService) GenerateOAuthState(ctx context.Context) (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
-	state := hex.EncodeToString(b)
+	nonce := hex.EncodeToString(b)
 
-	err := s.redisService.SetWithTTL(ctx, "oauth:state:"+state, "valid", 5*time.Minute)
-	if err != nil {
-		return state, nil // Graceful jika Redis dev belum jalan
+	// Jika Redis aktif, simpan state acak di Redis dengan TTL 5 menit
+	if s.redisService != nil && s.redisService.IsAvailable() {
+		err := s.redisService.SetWithTTL(ctx, "oauth:state:"+nonce, "valid", 5*time.Minute)
+		if err == nil {
+			return nonce, nil
+		}
 	}
 
-	return state, nil
+	// Fallback saat Redis offline: Stateless HMAC-signed OAuth state
+	exp := time.Now().Add(5 * time.Minute).Unix()
+	payload := fmt.Sprintf("%d:%s", exp, nonce)
+	mac := hmac.New(sha256.New, []byte(s.cfg.JWTSecret))
+	mac.Write([]byte(payload))
+	sig := hex.EncodeToString(mac.Sum(nil))
+
+	return fmt.Sprintf("st.%s.%s", payload, sig), nil
 }
 
-// ValidateOAuthState memvalidasi dan langsung menghapus state agar tidak bisa di-replay
+// ValidateOAuthState memvalidasi state OAuth baik via Redis maupun stateless HMAC fallback
 func (s *authService) ValidateOAuthState(ctx context.Context, state string) (bool, error) {
+	// 1. Cek apakah state merupakan fallback stateless HMAC
+	if strings.HasPrefix(state, "st.") {
+		parts := strings.Split(state, ".")
+		if len(parts) != 3 {
+			return false, errors.New("invalid stateless oauth state format")
+		}
+
+		payload := parts[1]
+		sigHex := parts[2]
+
+		expectedSig, err := hex.DecodeString(sigHex)
+		if err != nil {
+			return false, errors.New("invalid signature encoding in oauth state")
+		}
+
+		mac := hmac.New(sha256.New, []byte(s.cfg.JWTSecret))
+		mac.Write([]byte(payload))
+		if !hmac.Equal(mac.Sum(nil), expectedSig) {
+			return false, errors.New("invalid or tampered oauth state signature")
+		}
+
+		payloadParts := strings.Split(payload, ":")
+		if len(payloadParts) != 2 {
+			return false, errors.New("invalid oauth state payload")
+		}
+
+		expUnix, err := strconv.ParseInt(payloadParts[0], 10, 64)
+		if err != nil || time.Now().Unix() > expUnix {
+			return false, errors.New("oauth state has expired")
+		}
+
+		// Single-use protection for the Redis-less fallback. Without this,
+		// a captured state could be replayed on another login attempt.
+		if _, loaded := s.usedStates.LoadOrStore(state, expUnix); loaded {
+			return false, errors.New("oauth state has already been used")
+		}
+		s.cleanupUsedStates()
+
+		return true, nil
+	}
+
+	// 2. Validasi via Redis session store
+	if s.redisService == nil || !s.redisService.IsAvailable() {
+		return false, errors.New("redis session store unavailable to validate state")
+	}
+
 	val, err := s.redisService.Get(ctx, "oauth:state:"+state)
 	if err != nil || val == "" {
 		return false, errors.New("invalid or expired oauth state")
@@ -117,6 +184,16 @@ func (s *authService) ValidateJWT(tokenStr string) (*JWTClaims, error) {
 
 func (s *authService) GetVoterByEmail(email string) (*domain.Voter, error) {
 	return s.voterRepo.FindByEmail(email)
+}
+
+func (s *authService) cleanupUsedStates() {
+	now := time.Now().Unix()
+	s.usedStates.Range(func(key, value interface{}) bool {
+		if exp, ok := value.(int64); ok && exp < now {
+			s.usedStates.Delete(key)
+		}
+		return true
+	})
 }
 
 func (s *authService) CreateMockVoterIfNotExist(email, nim, name, major string) (*domain.Voter, error) {

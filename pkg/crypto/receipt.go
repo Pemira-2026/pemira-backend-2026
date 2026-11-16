@@ -19,10 +19,9 @@ func GenerateReceiptToken(voterID string, secretKey string, salt string) (string
 	mac.Write([]byte(payload))
 	signature := hex.EncodeToString(mac.Sum(nil))
 
-	// Format token publik yang ramah pengguna: VOTE-RCPT-<16-karakter-signature>-<8-karakter-timestamp>
-	shortSig := strings.ToUpper(signature[:16])
-	timeHex := strings.ToUpper(fmt.Sprintf("%X", timestamp)[:8])
-	receiptToken := fmt.Sprintf("VOTE-RCPT-%s-%s", shortSig, timeHex)
+	// Token publik hanya memuat signature agar dapat dicocokkan dengan hash
+	// receipt yang disimpan, tanpa memuat voter ID, timestamp, atau pilihan.
+	receiptToken := fmt.Sprintf("VOTE-RCPT-%s", strings.ToUpper(signature))
 
 	// Hash 64 karakter lengkap yang disimpan di DB untuk verifikasi audit
 	receiptHash := signature

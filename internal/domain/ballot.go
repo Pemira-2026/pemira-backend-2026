@@ -39,12 +39,12 @@ type SubmitVoteResponse struct {
 
 // TallyResultItem hasil rekapitulasi per paslon (Hanya bisa dibuka saat Quorum terpenuhi)
 type TallyResultItem struct {
-	ChairID          uint   `json:"chairId"`
-	ChairName        string `json:"chairName"`
-	CandidateGroupID string `json:"candidateGroupId"`
-	BallotNumber     int    `json:"ballotNumber"`
-	LeaderName       string `json:"leaderName"`
-	ViceName         string `json:"viceName"`
-	TotalVotes       int64  `json:"totalVotes"`
+	ChairID          uint    `json:"chairId"`
+	ChairName        string  `json:"chairName"`
+	CandidateGroupID string  `json:"candidateGroupId"`
+	BallotNumber     int     `json:"ballotNumber"`
+	LeaderName       string  `json:"leaderName"`
+	ViceName         string  `json:"viceName"`
+	TotalVotes       int64   `json:"totalVotes"`
 	Percentage       float64 `json:"percentage"`
 }

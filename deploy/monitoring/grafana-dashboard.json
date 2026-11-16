@@ -1,0 +1,68 @@
+{
+  "annotations": { "list": [] },
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request rate by status",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum by (status) (rate(pemira_http_requests_total[1m]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "5xx error ratio",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "targets": [
+        {
+          "expr": "sum(rate(pemira_http_errors_total[5m])) / clamp_min(sum(rate(pemira_http_requests_total[5m])), 0.001)",
+          "legendFormat": "5xx ratio"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Mean latency by route",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "expr": "sum by (path) (rate(pemira_http_request_duration_seconds_sum[5m])) / clamp_min(sum by (path) (rate(pemira_http_request_duration_seconds_count[5m])), 0.001)",
+          "legendFormat": "{{path}}"
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "In-flight requests / goroutines",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "targets": [
+        { "expr": "pemira_http_inflight_requests", "legendFormat": "inflight" },
+        { "expr": "pemira_go_goroutines", "legendFormat": "goroutines" }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Process uptime (s)",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
+      "targets": [{ "expr": "pemira_process_uptime_seconds" }]
+    },
+    {
+      "type": "stat",
+      "title": "Heap allocated",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 16 },
+      "targets": [{ "expr": "pemira_go_memstats_alloc_bytes" }]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["pemira", "election"],
+  "time": { "from": "now-6h", "to": "now" },
+  "title": "PEMIRA 2026 - API Operations",
+  "uid": "pemira-api-ops",
+  "version": 1
+}

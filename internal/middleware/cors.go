@@ -13,8 +13,11 @@ func SetupCORS(cfg *config.Config) gin.HandlerFunc {
 	// Whitelist domain Voter Portal dan Admin Dashboard
 	allowedOrigins := []string{
 		"http://localhost:5173", // Vite default port
+		"http://127.0.0.1:5173",
 		"http://localhost:5174", // Admin dashboard port
+		"http://127.0.0.1:5174",
 		"http://localhost:3000",
+		"http://127.0.0.1:3000",
 	}
 
 	if cfg.VoterFrontendURL != "" {

@@ -9,6 +9,8 @@ import (
 type BallotRepository interface {
 	InsertBatch(tx *gorm.DB, ballots []domain.Ballot) error
 	GetTallyResults() ([]domain.TallyResultItem, error)
+	InsertReceiptCommitment(tx *gorm.DB, commitment *domain.ReceiptCommitment) error
+	ReceiptCommitmentExists(tokenHash string) (bool, error)
 }
 
 type ballotRepository struct {
@@ -23,6 +25,22 @@ func NewBallotRepository(db *gorm.DB) BallotRepository {
 // SAMA SEKALI TIDAK MENYIMPAN VOTER_ID ATAU FK IDENTITAS!
 func (r *ballotRepository) InsertBatch(tx *gorm.DB, ballots []domain.Ballot) error {
 	return tx.Create(&ballots).Error
+}
+
+// InsertReceiptCommitment menyimpan komitmen hash tanda terima publik ke dalam kotak komitmen anonim
+func (r *ballotRepository) InsertReceiptCommitment(tx *gorm.DB, commitment *domain.ReceiptCommitment) error {
+	return tx.Create(commitment).Error
+}
+
+// ReceiptCommitmentExists memeriksa keberadaan token hash komitmen di tabel receipt_commitments
+func (r *ballotRepository) ReceiptCommitmentExists(tokenHash string) (bool, error) {
+	var count int64
+	if err := r.db.Model(&domain.ReceiptCommitment{}).
+		Where("token_hash = ?", tokenHash).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // GetTallyResults menghitung perolehan suara per kandidat (Hanya dibuka setelah jam pemilihan ditutup)

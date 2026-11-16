@@ -1,12 +1,14 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"pemira-backend/internal/config"
 	"pemira-backend/internal/domain"
 	"time"
 
+	"github.com/glebarez/sqlite"
 	"github.com/google/uuid"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
@@ -14,51 +16,75 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// Connect menginisialisasi koneksi basis data dengan connection pool dan verifikasi ping
 func Connect(cfg *config.Config) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 
 	if cfg.DatabaseURL != "" {
 		dialector = postgres.Open(cfg.DatabaseURL)
-	} else if cfg.DBDriver == "mysql" {
-		dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-			cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName,
-		)
-		dialector = mysql.Open(dsn)
 	} else {
-		// Default: PostgreSQL
-		dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Jakarta",
-			cfg.DBHost, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBPort, cfg.DBSSLMode,
-		)
-		dialector = postgres.Open(dsn)
+		switch cfg.DBDriver {
+		case "sqlite":
+			dbPath := cfg.DBName
+			if dbPath == "" {
+				dbPath = ":memory:"
+			}
+			dialector = sqlite.Open(dbPath)
+		case "mysql":
+			dsn := fmt.Sprintf("%s:%s@tcp(%s:%s)/%s?charset=utf8mb4&parseTime=True&loc=Local",
+				cfg.DBUser, cfg.DBPassword, cfg.DBHost, cfg.DBPort, cfg.DBName,
+			)
+			dialector = mysql.Open(dsn)
+		default: // "postgres"
+			dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=%s TimeZone=Asia/Jakarta",
+				cfg.DBHost, cfg.DBUser, cfg.DBPassword, cfg.DBName, cfg.DBPort, cfg.DBSSLMode,
+			)
+			dialector = postgres.Open(dsn)
+		}
+	}
+
+	logMode := logger.Warn
+	if cfg.ServerEnv == "development" {
+		logMode = logger.Info
 	}
 
 	gormConfig := &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Warn),
+		Logger: logger.Default.LogMode(logMode),
 	}
 
 	db, err := gorm.Open(dialector, gormConfig)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, fmt.Errorf("failed to open database connection (%s): %w", cfg.DBDriver, err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get sql.DB instance: %w", err)
+		return nil, fmt.Errorf("failed to retrieve sql.DB instance: %w", err)
+	}
+
+	// Verifikasi koneksi secara nyata dengan ping (timeout 5 detik)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := sqlDB.PingContext(ctx); err != nil {
+		_ = sqlDB.Close()
+		return nil, fmt.Errorf("database ping verification failed (unable to reach database host): %w", err)
 	}
 
 	// Performance & Concurrency Connection Pooling Tuning
 	sqlDB.SetMaxOpenConns(cfg.DBMaxOpenConns)
 	sqlDB.SetMaxIdleConns(cfg.DBMaxIdleConns)
 	sqlDB.SetConnMaxLifetime(cfg.DBConnMaxLifetime)
+	sqlDB.SetConnMaxIdleTime(10 * time.Minute)
 
-	log.Printf("Connected to %s database with pool (MaxOpen: %d, MaxIdle: %d)",
-		cfg.DBDriver, cfg.DBMaxOpenConns, cfg.DBMaxIdleConns,
+	log.Printf("Connected successfully to %s database with pool (MaxOpen: %d, MaxIdle: %d, MaxLifetime: %v)",
+		cfg.DBDriver, cfg.DBMaxOpenConns, cfg.DBMaxIdleConns, cfg.DBConnMaxLifetime,
 	)
 
 	return db, nil
 }
 
-// AutoMigrate membuat tabel relasional secara aman
+// AutoMigrate membuat skema tabel relasional secara aman
 func AutoMigrate(db *gorm.DB) error {
 	log.Println("Running AutoMigration for Zero-Linkability E-Voting Schema...")
 	return db.AutoMigrate(
@@ -66,13 +92,51 @@ func AutoMigrate(db *gorm.DB) error {
 		&domain.Chair{},
 		&domain.CandidateGroup{},
 		&domain.Ballot{},
+		&domain.ReceiptCommitment{},
 		&domain.ElectionConfig{},
 		&domain.AuditLog{},
+		&domain.AdminUser{},
 	)
 }
 
-// SeedInitialData menginisialisasi kursi pemilihan & konfigurasi awal pemilu jika belum ada
-func SeedInitialData(db *gorm.DB) {
+// RunMigrations mengelola eksekusi migrasi skema berdasarkan konfigurasi
+func RunMigrations(db *gorm.DB, cfg *config.Config) error {
+	if cfg.DBAutoMigrate {
+		log.Printf("Executing AutoMigrate (DB_AUTO_MIGRATE=true)...")
+		if err := AutoMigrate(db); err != nil {
+			return fmt.Errorf("automigration failed: %w", err)
+		}
+		log.Println("Database AutoMigration completed successfully.")
+		return nil
+	}
+
+	// Pada mode production tanpa AutoMigrate, verifikasi tabel-tabel utama sudah ada
+	log.Println("AutoMigration is disabled. Verifying required database schema tables...")
+	requiredTables := []string{"voters", "chairs", "candidate_groups", "ballots", "receipt_commitments", "election_configs", "audit_logs", "admin_users"}
+	for _, tbl := range requiredTables {
+		if !db.Migrator().HasTable(tbl) {
+			return fmt.Errorf("required table '%s' is missing from database. Please apply SQL migrations before starting", tbl)
+		}
+	}
+	log.Println("Database schema verification passed: all required tables exist.")
+	return nil
+}
+
+// SeedInitialData menginisialisasi kursi pemilihan & konfigurasi awal pemilu
+// PENTING: Seed HANYA dijalankan pada environment 'development' dan jika SEED_DEV_DATA aktif
+func SeedInitialData(db *gorm.DB, cfg *config.Config) {
+	if cfg.ServerEnv != "development" {
+		log.Printf("Seeding skipped: current environment is '%s' (seeding is strictly prohibited in non-development environments)", cfg.ServerEnv)
+		return
+	}
+
+	if !cfg.SeedDevData {
+		log.Println("Seeding skipped: SEED_DEV_DATA is set to false.")
+		return
+	}
+
+	log.Println("Executing initial development data seeding...")
+
 	// 1. Seed Chairs
 	var count int64
 	db.Model(&domain.Chair{}).Count(&count)
@@ -89,7 +153,9 @@ func SeedInitialData(db *gorm.DB) {
 			{Name: "Ketua Himpunan Mahasiswa Jurusan Niaga", Scope: "Administrasi Niaga", MaxSelection: 1, IsActive: true},
 			{Name: "Ketua Himpunan Mahasiswa Jurusan Grafika", Scope: "Teknik Grafika dan Penerbitan", MaxSelection: 1, IsActive: true},
 		}
-		db.Create(&chairs)
+		if err := db.Create(&chairs).Error; err != nil {
+			log.Printf("WARNING: Failed to seed chairs: %v", err)
+		}
 	}
 
 	// 2. Seed Election Config (Window Pemilihan)
@@ -104,7 +170,9 @@ func SeedInitialData(db *gorm.DB) {
 			EndTime:           now.Add(24 * time.Hour),
 			IsEmergencyPaused: false,
 		}
-		db.Create(&config)
+		if err := db.Create(&config).Error; err != nil {
+			log.Printf("WARNING: Failed to seed election config: %v", err)
+		}
 	}
 
 	// 3. Seed Candidates jika belum ada
@@ -113,7 +181,14 @@ func SeedInitialData(db *gorm.DB) {
 	if candCount == 0 {
 		log.Println("Seeding default election candidates...")
 		var allChairs []domain.Chair
-		db.Find(&allChairs)
+		if err := db.Find(&allChairs).Error; err != nil {
+			log.Printf("ERROR: Failed to load chairs for seeding candidates: %v", err)
+			return
+		}
+		if len(allChairs) == 0 {
+			log.Println("WARNING: No chairs found in database. Skipping candidate seeding.")
+			return
+		}
 		chairMap := make(map[string]uint)
 		for _, c := range allChairs {
 			chairMap[c.Name] = c.ID
@@ -203,7 +278,9 @@ func SeedInitialData(db *gorm.DB) {
 
 		for _, cand := range candidates {
 			if cand.ChairID != 0 {
-				db.Create(&cand)
+				if err := db.Create(&cand).Error; err != nil {
+					log.Printf("WARNING: Failed to create candidate for chair %d: %v", cand.ChairID, err)
+				}
 			}
 		}
 	}

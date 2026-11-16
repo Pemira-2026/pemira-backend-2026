@@ -33,6 +33,10 @@ func (h *VoteHandler) SubmitVote(c *gin.Context) {
 
 	res, err := h.voteService.SubmitVote(c.Request.Context(), voterID.(string), req)
 	if err != nil {
+		if errors.Is(err, service.ErrTurnstileInvalid) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		if errors.Is(err, service.ErrAlreadyVoted) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
@@ -43,6 +47,10 @@ func (h *VoteHandler) SubmitVote(c *gin.Context) {
 		}
 		if errors.Is(err, service.ErrConcurrentConflict) {
 			c.JSON(http.StatusTooManyRequests, gin.H{"error": err.Error()})
+			return
+		}
+		if errors.Is(err, service.ErrInvalidCandidate) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memproses suara: " + err.Error()})
@@ -60,9 +68,21 @@ func (h *VoteHandler) VerifyReceipt(c *gin.Context) {
 		return
 	}
 
-	valid, _ := h.voteService.GetReceiptVerification(receiptCode)
+	valid, err := h.voteService.GetReceiptVerification(receiptCode)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	if !valid {
+		c.JSON(http.StatusNotFound, gin.H{
+			"valid":   false,
+			"receipt": receiptCode,
+			"error":   "Tanda terima tidak valid atau tidak terdaftar",
+		})
+		return
+	}
 	c.JSON(http.StatusOK, gin.H{
-		"valid":   valid,
+		"valid":   true,
 		"receipt": receiptCode,
 		"status":  "Suara telah terverifikasi tersimpan di dalam kotak suara digital.",
 	})

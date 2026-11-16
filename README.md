@@ -108,3 +108,31 @@ Server akan berjalan di `http://localhost:8080`.
 ### 3. Panel Admin & Saksi
 * `GET  /api/v1/admin/turnout` : Monitoring persentase kehadiran pemilih secara real-time.
 * `POST /api/v1/admin/tally` : Pembongkaran kotak suara (Wajib header `x-kpu-secret-key` & `x-bawaslu-secret-key` setelah pemilu usai).
+* `GET  /api/v1/admin/election-config` : Membaca window & status pemilihan.
+* `PUT  /api/v1/admin/election-config` : Memperbarui jadwal/status (admin, otomatis invalidasi cache + audit log).
+* `POST /api/v1/admin/cache/invalidate` : Invalidasi cache konfigurasi/kandidat (admin).
+* `GET  /api/v1/admin/audit-logs` : Audit trail aktivitas sistem.
+
+### 4. Operasional
+* `GET /health`, `/health/liveness`, `/health/readiness` : Probe kesehatan.
+* `GET /metrics` : Metrik Prometheus (Bearer `METRICS_TOKEN` di production).
+
+---
+
+## MCP Operator Server (stdio)
+
+Server MCP berada di `cmd/mcp` dan hanya untuk operator lokal, bukan layanan
+jaringan. Build dan jalankan:
+
+```bash
+go build ./cmd/mcp
+MCP_OPERATOR_ROLE=readonly go run ./cmd/mcp
+```
+
+Default production: role `readonly`, semua `MCP_ALLOW_*` false, tally
+fail-closed, dan secret quorum hanya dibaca dari environment
+(`KPU_MASTER_SECRET`, `BAWASLU_AUDIT_SECRET`) — tidak pernah dari parameter tool.
+Mock login ditolak saat `SERVER_ENV=production`.
+
+Dokumen deployment production ada di `deploy/DEPLOYMENT_RUNBOOK.md` (bundle
+lengkap: `deploy/README.md`). Status remediasi: `REMEDIATION_STATUS_2026.md`.

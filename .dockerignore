@@ -1,0 +1,25 @@
+# Never send secrets or local artifacts into the Docker build context.
+.env
+.env.*
+!.env.example
+!.env.production.example
+
+# Build/test output
+*.exe
+*.exe~
+*.test
+*.out
+bin/
+dist/
+
+# VCS / editor / OS noise
+.git/
+.gitignore
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docs and local scratch files not needed to compile
+*.md

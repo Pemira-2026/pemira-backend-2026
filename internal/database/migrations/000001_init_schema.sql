@@ -68,6 +68,16 @@ CREATE TABLE IF NOT EXISTS ballots (
 CREATE INDEX IF NOT EXISTS idx_ballots_chair ON ballots(chair_id);
 CREATE INDEX IF NOT EXISTS idx_ballots_candidate ON ballots(candidate_group_id);
 
+-- 5B. TABEL KOMITMEN TANDA TERIMA SUARA (RECEIPT COMMITMENTS) - ZERO-LINKABILITY
+-- SAMA SEKALI TIDAK ADA voter_id, chair_id, ATAU candidate_group_id
+CREATE TABLE IF NOT EXISTS receipt_commitments (
+    id VARCHAR(36) PRIMARY KEY,                         -- UUID v4
+    token_hash VARCHAR(64) NOT NULL UNIQUE,             -- SHA-256 hash dari receipt token publik
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_receipt_commitments_hash ON receipt_commitments(token_hash);
+
 -- 6. PENGATURAN JADWAL PEMILU (ELECTION CONFIGS)
 CREATE TABLE IF NOT EXISTS election_configs (
     id SERIAL PRIMARY KEY,

@@ -18,11 +18,11 @@ import (
 )
 
 type AuthHandler struct {
-	authService  service.AuthService
-	voterRepo    repository.VoterRepository
-	chairRepo    repository.ChairRepository
-	oauthConfig  *oauth2.Config
-	cfg          *config.Config
+	authService service.AuthService
+	voterRepo   repository.VoterRepository
+	chairRepo   repository.ChairRepository
+	oauthConfig *oauth2.Config
+	cfg         *config.Config
 }
 
 func NewAuthHandler(
@@ -90,22 +90,34 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 	}
 
 	var googleUser struct {
-		Email string `json:"email"`
-		Name  string `json:"name"`
+		Email         string `json:"email"`
+		Name          string `json:"name"`
+		VerifiedEmail bool   `json:"verified_email"`
+		EmailVerified bool   `json:"email_verified"`
 	}
 	if err := json.Unmarshal(body, &googleUser); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Google profile payload"})
 		return
 	}
 
-	// Validasi Domain Kampus Resmi
-	if h.cfg.CampusEmailDomain != "" && !strings.HasSuffix(googleUser.Email, "@"+h.cfg.CampusEmailDomain) {
-		c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("Akses ditolak: Gunakan email resmi kampus @%s", h.cfg.CampusEmailDomain)})
+	if !googleUser.VerifiedEmail && !googleUser.EmailVerified {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Akses ditolak: Email Google belum diverifikasi"})
 		return
 	}
 
+	normalizedEmail := strings.ToLower(strings.TrimSpace(googleUser.Email))
+
+	// Validasi Domain Kampus Resmi
+	if h.cfg.CampusEmailDomain != "" {
+		allowedDomain := strings.ToLower(strings.TrimSpace(h.cfg.CampusEmailDomain))
+		if !strings.HasSuffix(normalizedEmail, "@"+allowedDomain) {
+			c.JSON(http.StatusForbidden, gin.H{"error": fmt.Sprintf("Akses ditolak: Gunakan email resmi kampus @%s", h.cfg.CampusEmailDomain)})
+			return
+		}
+	}
+
 	// Cek apakah mahasiswa terdaftar di DPT
-	voter, err := h.voterRepo.FindByEmail(googleUser.Email)
+	voter, err := h.voterRepo.FindByEmail(normalizedEmail)
 	if err != nil {
 		c.Redirect(http.StatusTemporaryRedirect, fmt.Sprintf("%s/not-registered", h.cfg.VoterFrontendURL))
 		return
@@ -123,6 +135,11 @@ func (h *AuthHandler) GoogleCallback(c *gin.Context) {
 
 // DevMockLogin endpoint praktis untuk pengujian lokal & simulasi akun tanpa Google OAuth
 func (h *AuthHandler) DevMockLogin(c *gin.Context) {
+	if h.cfg.ServerEnv == "production" {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Dev mock login is disabled in production"})
+		return
+	}
+
 	var req struct {
 		Email string `json:"email" binding:"required"`
 		NIM   string `json:"nim"`
